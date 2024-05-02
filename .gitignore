@@ -1,0 +1,33 @@
+# IDE相关
+.idea
+.vscode
+*.iml
+node_modules
+
+# 缓存和编译文件
+build/
+dist/
+coverage/
+
+# 忽略本地开发配置
+local.*.json
+*.local.*
+
+# 代码分析和格式化工具的临时文件
+*.swp
+.DS_Store
+
+# npm/yarn的锁定文件
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# 项目特定的忽略项
+**/logs/*
+**/*.map
+
+# React开发服务器的热更新文件
+*.hot-update.*
+
+# Jest测试相关的临时文件
+**/__tests__/*.snap
