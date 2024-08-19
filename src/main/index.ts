@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, OpenDialogOptions, shell } from 'electron'
 import { join } from 'path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -7,15 +7,13 @@ import * as path from 'node:path'
 import * as fs from 'node:fs'
 import yaml from 'yaml'
 import service from '../built-in-service/service'
+import { channels } from '../utils/channels'
+import { GlobalConfig } from '../utils/interfaces'
 
-export interface GlobalConfig {
-  hostPath: string
-  workingMode: 'local' | 'remote' | false
-  host: string
-  port: number
-}
 export const configDirectory = path.join(os.homedir(), '.config', 'asset-management-tools')
 export const globalConfigPath = path.join(configDirectory, 'global.yml')
+
+export let globalConfig: GlobalConfig | undefined = void 0
 
 function readConfig(): GlobalConfig | undefined {
   if (!fs.existsSync(configDirectory)) {
@@ -26,10 +24,8 @@ function readConfig(): GlobalConfig | undefined {
     return void 0
   }
   try {
-    const fileContents = fs.readFileSync(configPath, 'utf8')
-    const data = yaml.parse(fileContents)
-    console.log(data)
-    return data
+    const fileContents = fs.readFileSync(globalConfigPath, 'utf8')
+    return yaml.parse(fileContents)
   } catch (err) {
     console.error(`Error reading YAML file: ${err}`)
     return void 0
@@ -53,7 +49,8 @@ function initialGlobalConfig(): GlobalConfig {
   const config: GlobalConfig = {
     hostPath: '',
     workingMode: false,
-    host: 'localhost',
+    protocol: 'http',
+    hostname: 'localhost',
     port: 12170
   }
   writeConfig(config)
@@ -74,9 +71,12 @@ function createWindow(): void {
     }
   })
 
+  initOn(mainWindow)
+
   mainWindow.on('ready-to-show', () => {
     mainWindow.maximize()
     mainWindow.show()
+    mainWindow.setMenu(null)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -91,23 +91,29 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools()
+  }
 }
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  let globalConfig = readConfig()
+  globalConfig = readConfig()
   if (!globalConfig) {
     globalConfig = initialGlobalConfig()
   }
 
   if (globalConfig.workingMode === 'local') {
-    service
+    service.listen(globalConfig.port, globalConfig.hostname, () => {
+      console.log(`Server is running at http://${globalConfig?.hostname}:${globalConfig?.port}/`)
+    })
   }
 
   // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+  electronApp.setAppUserModelId('com.idatac.asset-management-tools')
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
@@ -118,9 +124,11 @@ app.whenReady().then(() => {
 
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
+  const noGui = process.argv.includes('--no-gui')
 
-  createWindow()
-
+  if (!noGui) {
+    createWindow()
+  }
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
@@ -139,3 +147,30 @@ app.on('window-all-closed', () => {
 
 // In this file you can include the rest of your app"s specific main process
 // code. You can also put them in separate files and require them here.
+
+function initOn(win: BrowserWindow): void {
+  // region 操作全局配置文件
+  ipcMain.on(channels.GET_GLOBAL_CONFIG, (event) => {
+    event.returnValue = globalConfig
+  })
+
+  ipcMain.handle(channels.WRITE_GLOBAL_CONFIG, async (_, config: GlobalConfig) => {
+    writeConfig(config)
+    if (config.workingMode === 'local') {
+      runService(config)
+    }
+  })
+  // endregion
+
+  ipcMain.handle(channels.OPEN_DIRECTORY, async (_, options: OpenDialogOptions) => {
+    return dialog.showOpenDialog(win, options)
+  })
+}
+
+function runService(config: GlobalConfig): string | undefined {
+  service.listen(config.port, config.hostname, () => {
+    console.log(`Server is running at http://${config?.hostname}:${config?.port}/`)
+  })
+
+  return void 0
+}
