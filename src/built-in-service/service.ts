@@ -2,7 +2,7 @@ import express from 'express'
 import * as https from 'node:https'
 import * as http from 'node:http'
 
-export function useHttpServer(
+export function createHttpServer(
   protocol: 'http' | 'https',
   hostname: string,
   port: number,
